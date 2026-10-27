@@ -1,0 +1,11 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.53.3", features = ["full"] }
+axolotl-sdk = { path = "../axolotl-sdk", features = ["full"] }
+
+uuid = { version = "1.28.0", features = ["v3"] }
+directories = { version = "6.0.0" }
