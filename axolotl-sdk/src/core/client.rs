@@ -1,68 +1,8 @@
+use crate::core::http::HttpClientExt;
 use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 use url::Url;
-use uuid::Uuid;
-use crate::core::launch::UserType;
-
-#[derive(Debug, Clone)]
-pub enum AuthSession {
-    Online {
-        username: String,
-        uuid: String,
-        access_token: String,
-        xuid: String,
-    },
-    Offline {
-        username: String,
-        // uuid для офлайна можно либо генерировать прямо внутри варианта,
-        // либо принимать готовый (сгенерированный через Uuid::new_v3)
-        uuid: String,
-    },
-}
-
-impl AuthSession {
-    pub fn offline(username: impl Into<String>) -> Self {
-        let username = username.into();
-
-        let data = format!("OfflinePlayer:{}", username);
-        let uuid = Uuid::new_v3(&Uuid::nil(), data.as_bytes()).to_string();
-
-        Self::Offline { username, uuid }
-    }
-
-    pub fn online(
-        username: impl Into<String>,
-        uuid: impl Into<String>,
-        access_token: impl Into<String>,
-        xuid: impl Into<String>,
-    ) -> Self {
-        Self::Online {
-            username: username.into(),
-            uuid: uuid.into(),
-            access_token: access_token.into(),
-            xuid: xuid.into(),
-        }
-    }
-
-    pub fn resolve_user_type(&self, version_id: &str) -> UserType {
-        match self {
-            AuthSession::Online { .. } => UserType::Msa,
-
-            AuthSession::Offline { .. } => {
-                if Self::is_legacy_version(version_id) {
-                    UserType::Legacy
-                } else {
-                    UserType::Offline
-                }
-            }
-        }
-    }
-
-    fn is_legacy_version(version_id: &str) -> bool {
-        true
-    }
-}
 
 pub struct NoAuthMode;
 pub struct AuthMode;
@@ -94,30 +34,7 @@ pub struct MCLClient<Mode> {
 
 impl MCLClient<NoAuthMode> {
     pub fn new(pool_size: usize) -> MCLClient<NoAuthMode> {
-        let client = Client::builder()
-            .user_agent("AxolotlCDK/1.0")
-            .build()
-            .unwrap();
-        let limiter = Arc::new(Semaphore::new(pool_size));
-
-        Self {
-            mode: NoAuthMode,
-            client: client.clone(),
-            limiter: limiter.clone(),
-            #[cfg(feature = "piston")]
-            piston: PistonClient::new(client.clone(), limiter.clone()),
-            #[cfg(feature = "mojang")]
-            mojang: MojangClient {},
-            #[cfg(feature = "forge")]
-            forge: ForgeClient {},
-            #[cfg(feature = "fabric")]
-            fabric: FabricClient::new(client.clone(), limiter.clone()),
-            #[cfg(feature = "neoforge")]
-            neoforge: NeoForgeClient {},
-            #[cfg(feature = "quilt")]
-            quilt: QuiltClient {},
-            token: None,
-        }
+        Self::builder().pool_size(pool_size).build()
     }
 
     pub fn builder() -> MCLClientBuilder<NoAuthMode> {
@@ -125,24 +42,10 @@ impl MCLClient<NoAuthMode> {
     }
 
     pub fn authentication(self, token: String) -> MCLClient<AuthMode> {
-        MCLClient::<AuthMode> {
-            mode: AuthMode,
-            client: self.client,
-            limiter: self.limiter,
-            #[cfg(feature = "piston")]
-            piston: self.piston,
-            #[cfg(feature = "mojang")]
-            mojang: self.mojang,
-            #[cfg(feature = "forge")]
-            forge: self.forge,
-            #[cfg(feature = "fabric")]
-            fabric: self.fabric,
-            #[cfg(feature = "neoforge")]
-            neoforge: self.neoforge,
-            #[cfg(feature = "quilt")]
-            quilt: self.quilt,
-            token: Some(token),
-        }
+        Self::builder()
+            .client(self.client)
+            .limiter(self.limiter)
+            .authentication(token).build()
     }
 }
 
@@ -170,6 +73,17 @@ impl PistonClient {
     }
 }
 
+#[cfg(feature = "piston")]
+impl HttpClientExt for PistonClient {
+    fn client(&self) -> &Client {
+        &self.client
+    }
+
+    fn limiter(&self) -> &Semaphore {
+        &self.limiter
+    }
+}
+
 #[cfg(feature = "mojang")]
 pub struct MojangClient {}
 
@@ -184,6 +98,17 @@ pub struct FabricClient {
 }
 
 #[cfg(feature = "fabric")]
+impl HttpClientExt for FabricClient {
+    fn client(&self) -> &Client {
+        &self.client
+    }
+
+    fn limiter(&self) -> &Semaphore {
+        &self.limiter
+    }
+}
+
+#[cfg(feature = "fabric")]
 impl FabricClient {
     pub fn new(client: Client, limiter: Arc<Semaphore>) -> Self {
         Self {
@@ -193,7 +118,6 @@ impl FabricClient {
         }
     }
 }
-
 
 #[cfg(feature = "neoforge")]
 pub struct NeoForgeClient {}

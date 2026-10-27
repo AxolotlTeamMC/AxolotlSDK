@@ -1,7 +1,8 @@
 use std::path::Path;
-use crate::core::client::{AuthSession, FabricClient};
+use crate::core::client::FabricClient;
 use crate::core::errors::SdkError;
 use crate::core::launch::{LaunchConfig, LaunchConfigBuilder};
+use crate::core::verifier::AuthSession;
 use crate::loaders::piston::models::version::Kind;
 
 impl FabricClient {

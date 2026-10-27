@@ -1,9 +1,7 @@
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
-use url::Url;
+use serde::{Deserialize, Serialize};
 use crate::loaders::piston::models::version::{Kind, Latest, PistonVersion};
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct PistonManifest {
     latest: Latest,
     versions: Vec<PistonVersion>,

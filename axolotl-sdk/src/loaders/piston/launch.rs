@@ -1,8 +1,9 @@
-use crate::core::client::{AuthSession, PistonClient};
+use crate::core::client::PistonClient;
 use crate::core::launch::{LaunchConfig, LaunchConfigBuilder};
 use crate::core::errors::SdkError;
 use crate::loaders::piston::models::version_details::PistonVersionDetails;
 use std::path::{Path, PathBuf};
+use crate::core::verifier::AuthSession;
 use crate::loaders::piston::models::version::Kind;
 
 impl PistonClient {
@@ -64,7 +65,7 @@ impl PistonClient {
             .iter()
             .filter(|lib| lib.should_download())
             .filter_map(|lib| lib.downloads().artifact())
-            .map(|art| libraries_dir.as_ref().join(&art.path))
+            .map(|art| libraries_dir.as_ref().join(art.path()))
             .collect::<Vec<_>>()
     }
 }

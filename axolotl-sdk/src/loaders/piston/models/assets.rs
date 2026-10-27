@@ -1,33 +1,25 @@
 use std::collections::HashMap;
-use serde::Deserialize;
+use std::sync::OnceLock;
+use serde::{Deserialize, Serialize};
 use url::Url;
 use crate::core::download::Downloadable;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct AssetIndexInfo {
     id: String,
     sha1: String,
     size: u64,
-    #[serde(rename = "totalSize")]
-    pub total_size: u64,
+    total_size: u64,
     url: Url,
-}
-
-impl Default for AssetIndexInfo {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            sha1: String::new(),
-            size: 0,
-            total_size: 0,
-            url: Url::parse("http://localhost").unwrap(),
-        }
-    }
 }
 
 impl AssetIndexInfo {
     pub fn id(&self) -> &str {
         &self.id
+    }
+    pub fn total_size(&self) -> u64 {
+        self.total_size
     }
 }
 
@@ -38,16 +30,34 @@ pub struct AssetIndex {
 
 #[derive(Deserialize, Debug)]
 pub struct AssetObject {
-    pub hash: String,
-    pub size: u64,
+    hash: String,
+    size: u64,
+}
+
+impl AssetObject {
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
 impl Downloadable for AssetObject {
     fn url(&self) -> Url {
-        let prefix = &self.hash[0..2];
-        let sub_path = format!("{}/{}", prefix, self.hash);
+        static BASE_URL: OnceLock<Url> = OnceLock::new();
 
-        Url::parse("https://resources.download.minecraft.net/").unwrap().join(&sub_path).unwrap()
+        let prefix = self.hash.get(0..2).unwrap_or("xx");
+
+        let mut url = BASE_URL
+            .get_or_init(|| Url::parse("https://resources.download.minecraft.net/").unwrap())
+            .clone();
+
+        if let Ok(mut segments) = url.path_segments_mut() {
+            segments.push(prefix).push(&self.hash);
+        }
+
+        url
     }
 
     fn sha1(&self) -> &str {

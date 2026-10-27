@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 use crate::core::download::Downloadable;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Library {
     name: String,
     downloads: LibraryDownloads,
@@ -21,12 +21,12 @@ impl Library {
         &self.downloads
     }
 
-    pub fn rules(&self) -> &Option<Vec<Rule>> {
-        &self.rules
+    pub fn rules(&self) -> Option<&[Rule]> {
+        self.rules.as_deref()
     }
 
-    pub fn natives(&self) -> &Option<NativesConfig> {
-        &self.natives
+    pub fn natives(&self) -> Option<&NativesConfig> {
+        self.natives.as_ref()
     }
 
     pub fn extract(&self) -> Option<&ExtractConfig> {
@@ -45,7 +45,7 @@ impl Library {
         Self::evaluate_rules(self.rules())
     }
 
-    pub fn evaluate_rules(rules: &Option<Vec<Rule>>) -> bool {
+    pub fn evaluate_rules(rules: Option<&[Rule]>) -> bool {
         let rules = match rules {
             Some(rules) => rules,
             None => return true,
@@ -62,19 +62,21 @@ impl Library {
         let mut allowed = false;
 
         for rule in rules {
-            let os_matches = match &rule.os {
-                Some(os_restrict) => match &os_restrict.name {
-                    Some(os_name) => os_name == current_os,
-                    None => true,
-                },
-                None => true,
-            };
+            let os_matches = rule.os.as_ref().map_or(true, |os_restrict| {
+                os_restrict.name.as_ref().map_or(true, |os_name| {
+                    os_name == current_os || (current_os == "osx" && os_name == "macos")
+                })
+            });
 
-            if os_matches {
-                if rule.action == "allow" {
-                    allowed = true;
-                } else if rule.action == "disallow" {
-                    allowed = false;
+            let features_match = rule.features.as_ref().map_or(true, |features| {
+                features.as_object().map_or(true, |obj| obj.is_empty())
+            });
+
+            if os_matches && features_match {
+                match rule.action.as_str() {
+                    "allow" => allowed = true,
+                    "disallow" => allowed = false,
+                    _ => {}
                 }
             }
         }
@@ -83,12 +85,18 @@ impl Library {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ExtractConfig {
-    pub exclude: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+impl ExtractConfig {
+    pub fn exclude(&self) -> Option<&[String]> {
+        self.exclude.as_deref()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct LibraryDownloads {
     artifact: Option<Artifact>,
     classifiers: Option<HashMap<String, Artifact>>,
@@ -104,12 +112,18 @@ impl LibraryDownloads {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Artifact {
-    pub path: String,
+    path: String,
     sha1: String,
     size: u64,
     url: Url,
+}
+
+impl Artifact {
+    pub fn path(&self) -> &str {
+        &self.path
+    }
 }
 
 impl Downloadable for Artifact {
@@ -126,31 +140,65 @@ impl Downloadable for Artifact {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     action: String,
     os: Option<OsRestriction>,
     features: Option<serde_json::Value>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+impl Rule {
+    pub fn action(&self) -> &str {
+        &self.action
+    }
+    pub fn os(&self) -> Option<&OsRestriction> {
+        self.os.as_ref()
+    }
+    pub fn features(&self) -> Option<&serde_json::Value> {
+        self.features.as_ref()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct OsRestriction {
     name: Option<String>,
     arch: Option<String>,
     version: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+impl OsRestriction {
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+    pub fn arch(&self) -> Option<&str> {
+        self.arch.as_deref()
+    }
+    pub fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct NativesConfig {
     #[serde(rename = "windows")]
-    pub windows: Option<String>,
+    windows: Option<String>,
     #[serde(rename = "linux")]
-    pub linux: Option<String>,
+    linux: Option<String>,
     #[serde(rename = "osx")]
-    pub osx: Option<String>,
+    osx: Option<String>,
 }
 
 impl NativesConfig {
+    pub fn windows(&self) -> Option<&str> {
+        self.windows.as_deref()
+    }
+    pub fn linux(&self) -> Option<&str> {
+        self.linux.as_deref()
+    }
+    pub fn osx(&self) -> Option<&str> {
+        self.osx.as_deref()
+    }
+
     pub fn get_current_classifier(&self) -> Option<&str> {
         if cfg!(target_os = "windows") {
             self.windows.as_deref()

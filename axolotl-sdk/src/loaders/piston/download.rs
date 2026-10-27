@@ -1,12 +1,14 @@
-use std::path::{Path};
-use futures_util::{stream, StreamExt};
-use tokio::fs;
-use tokio::sync::mpsc;
+use std::collections::HashMap;
 use crate::core::client::PistonClient;
 use crate::core::download::{DownloadFromApi, Downloadable};
 use crate::core::errors::SdkError;
-use crate::core::progress::{DownloadEvent};
+use crate::core::progress::DownloadEvent;
 use crate::loaders::piston::models::version_details::PistonVersionDetails;
+use futures_util::{StreamExt, stream};
+use std::path::Path;
+use tokio::fs;
+use tokio::sync::mpsc;
+use crate::loaders::piston::models::assets::AssetObject;
 
 impl PistonClient {
     pub async fn download_client<P>(
@@ -18,23 +20,11 @@ impl PistonClient {
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let _permit = self
-            .limiter
-            .acquire()
-            .await?;
+        let _permit = self.limiter.acquire().await?;
 
         let download_info = version.downloads().client();
 
-        let file_suffix = "-client";
-
-        let file_extension = ".jar";
-
-        let mut file_name =
-            String::with_capacity(version.id().len() + file_suffix.len() + file_extension.len());
-
-        file_name.push_str(version.id());
-        file_name.push_str(file_suffix);
-        file_name.push_str(file_extension);
+        let file_name = version.id().to_string() + "-client.jar";
 
         Ok(download_info
             .download_from_api(minecraft_dir, &file_name, tx)
@@ -50,10 +40,7 @@ impl PistonClient {
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let _permit = self
-            .limiter
-            .acquire()
-            .await?;
+        let _permit = self.limiter.acquire().await?;
 
         let download_info = version.downloads().client_mappings();
 
@@ -61,16 +48,7 @@ impl PistonClient {
             return Ok(None);
         };
 
-        let file_suffix = "-client_mappings";
-
-        let file_extension = ".txt";
-
-        let mut file_name =
-            String::with_capacity(version.id().len() + file_suffix.len() + file_extension.len());
-
-        file_name.push_str(version.id());
-        file_name.push_str(file_suffix);
-        file_name.push_str(file_extension);
+        let file_name = version.id().to_string() + "-client_mappings.txt";
 
         Ok(Some(
             client_mappings
@@ -88,10 +66,7 @@ impl PistonClient {
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let _permit = self
-            .limiter
-            .acquire()
-            .await?;
+        let _permit = self.limiter.acquire().await?;
 
         let download_info = version.downloads().server();
 
@@ -99,16 +74,7 @@ impl PistonClient {
             return Ok(None);
         };
 
-        let file_suffix = "-server";
-
-        let file_extension = ".jar";
-
-        let mut file_name =
-            String::with_capacity(version.id().len() + file_suffix.len() + file_extension.len());
-
-        file_name.push_str(version.id());
-        file_name.push_str(file_suffix);
-        file_name.push_str(file_extension);
+        let file_name = version.id().to_string() + "-server.jar";
 
         Ok(Some(
             server
@@ -126,10 +92,7 @@ impl PistonClient {
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let _permit = self
-            .limiter
-            .acquire()
-            .await?;
+        let _permit = self.limiter.acquire().await?;
 
         let download_info = version.downloads().server_mappings();
 
@@ -137,16 +100,7 @@ impl PistonClient {
             return Ok(None);
         };
 
-        let file_suffix = "-server_mappings";
-
-        let file_extension = ".txt";
-
-        let mut file_name =
-            String::with_capacity(version.id().len() + file_suffix.len() + file_extension.len());
-
-        file_name.push_str(version.id());
-        file_name.push_str(file_suffix);
-        file_name.push_str(file_extension);
+        let file_name = version.id().to_string() + "-server_mappings.txt";
 
         Ok(Some(
             server_mappings
@@ -179,13 +133,10 @@ impl PistonClient {
 
         tx.send(DownloadEvent::Started {
             total_files: artifacts.len(),
-        }).await?;
+        })
+        .await?;
 
         let base_target_dir = libraries_dir.as_ref().to_path_buf();
-
-        let max_parallel = self.limiter.available_permits();
-
-        let max_parallel = if max_parallel == 0 { 64 } else { max_parallel };
 
         let download_stream = stream::iter(artifacts).map(|artifact| {
             let limiter = self.limiter.clone();
@@ -193,11 +144,9 @@ impl PistonClient {
             let tx = tx.clone();
 
             async move {
-                let _permit = limiter
-                    .acquire()
-                    .await?;
+                let _permit = limiter.acquire().await?;
 
-                let artifact_path = Path::new(&artifact.path);
+                let artifact_path = Path::new(artifact.path());
 
                 let Some(os_file_name) = artifact_path.file_name() else {
                     return Err(SdkError::InvalidPath);
@@ -215,7 +164,7 @@ impl PistonClient {
             }
         });
 
-        let mut buffered_stream = download_stream.buffer_unordered(max_parallel);
+        let mut buffered_stream = download_stream.buffer_unordered(32);
 
         while let Some(result) = buffered_stream.next().await {
             result?;
@@ -235,9 +184,6 @@ impl PistonClient {
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let max_parallel = self.limiter.available_permits();
-        let max_parallel = if max_parallel == 0 { 64 } else { max_parallel };
-
         let natives_dir = natives_dir.as_ref().to_path_buf();
 
         if !natives_dir.exists() {
@@ -259,6 +205,13 @@ impl PistonClient {
             })
             .collect();
 
+        if native_artifacts.is_empty() {
+            let _ = tx.send(DownloadEvent::Finished).await;
+            return Ok(());
+        }
+
+        let _ = tx.send(DownloadEvent::Started { total_files: native_artifacts.len() }).await;
+
         let client = self.client.clone();
 
         let download_stream = stream::iter(native_artifacts).map(|artifact| {
@@ -271,47 +224,59 @@ impl PistonClient {
             async move {
                 let _permit = limiter.acquire().await?;
 
-                let response = client.get(url.clone()).send().await.map_err(|e| SdkError::Network(e))?;
-                let bytes = response.bytes().await.map_err(|e| SdkError::Network(e))?;
+                let response = client.get(url).send().await?;
+                let bytes = response.bytes().await?;
 
-                let reader = std::io::Cursor::new(bytes);
-                let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
-                    SdkError::DownloadError(format!("Failed to read zip archive for native: {}", e))
-                })?;
+                tokio::task::spawn_blocking(move || {
+                    let reader = std::io::Cursor::new(bytes);
+                    let mut archive = zip::ZipArchive::new(reader).map_err(|e| SdkError::ExtractionError(e.to_string()))?;
 
-                // 3. Достаем из архива только файлы нативных библиотек (.dll, .so, .dylib)
-                for i in 0..archive.len() {
-                    let mut file = archive.by_index(i).map_err(|e| {
-                        SdkError::DownloadError(format!("Failed to read zip entry: {}", e))
-                    })?;
+                    // 3. Достаем из архива только файлы нативных библиотек (.dll, .so, .dylib)
+                    for i in 0..archive.len() {
+                        let mut file = archive.by_index(i).map_err(|e| {
+                            SdkError::DownloadError(format!("Failed to read zip entry: {}", e))
+                        })?;
 
-                    let file_name = match file.enclosed_name() {
-                        Some(path) => match path.file_name() {
-                            Some(name) => name.to_owned(),
+                        let enclosed_path = match file.enclosed_name() {
+                            Some(path) => path.to_owned(),
                             None => continue,
-                        },
-                        None => continue,
-                    };
+                        };
 
-                    let name_str = file_name.to_string_lossy();
+                        let name_str = enclosed_path.to_string_lossy();
 
-                    if name_str.ends_with(".dll") || name_str.ends_with(".so") || name_str.ends_with(".dylib") {
-                        let target_path = natives_dir.join(&file_name);
+                        if name_str.ends_with(".dll")
+                            || name_str.ends_with(".so")
+                            || name_str.ends_with(".dylib")
+                        {
+                            let target_path = natives_dir.join(&enclosed_path);
 
-                        let mut out_file = std::fs::File::create(&target_path)?;
-                        std::io::copy(&mut file, &mut out_file)?;
+                            if let Some(parent) = target_path.parent() {
+                                std::fs::create_dir_all(parent).map_err(SdkError::Io)?;
+                            }
+
+                            let mut out_file = std::fs::File::create(&target_path).map_err(SdkError::Io)?;
+                            std::io::copy(&mut file, &mut out_file).map_err(SdkError::Io)?;
+                        }
                     }
-                }
+                    Ok::<(), SdkError>(())
+                })
+                .await
+                .map_err(|e| SdkError::DownloadError(e.to_string()))??;
 
-                let _ = tx.send(DownloadEvent::FileFinished {
-                    name: artifact.path.split('/').last().unwrap_or("native").to_string()
-                }).await;
+                let file_name = artifact
+                    .path()
+                    .split('/')
+                    .last()
+                    .unwrap_or("native")
+                    .to_string();
+
+                let _ = tx.send(DownloadEvent::FileFinished { name: file_name }).await;
 
                 Ok::<(), SdkError>(())
             }
         });
 
-        let mut buffered_stream = download_stream.buffer_unordered(max_parallel);
+        let mut buffered_stream = download_stream.buffer_unordered(32);
 
         while let Some(result) = buffered_stream.next().await {
             result?;
@@ -335,10 +300,7 @@ impl PistonClient {
 
         let assets_index_dir = assets_dir.as_ref().join("indexes");
 
-        let file_extension = ".json";
-        let mut file_name = String::with_capacity(assets_index.id().len() + file_extension.len());
-        file_name.push_str(&assets_index.id());
-        file_name.push_str(file_extension);
+        let file_name = assets_index.id().to_string() + ".json";
 
         Ok(assets_index
             .download_from_api(assets_index_dir, &file_name, tx)
@@ -347,24 +309,19 @@ impl PistonClient {
 
     pub async fn download_asset_objects<P>(
         &self,
-        version: &PistonVersionDetails,
+        assets_objects: HashMap<String, AssetObject>,
         assets_dir: P,
         tx: mpsc::Sender<DownloadEvent>,
     ) -> Result<(), SdkError>
     where
         P: AsRef<Path> + Send + Sync + 'static,
     {
-        let max_parallel = self.limiter.available_permits();
-
-        let max_parallel = if max_parallel == 0 { 64 } else { max_parallel };
-
-        // Убрать
-        let assets_objects = self.fetch_asset_index(version).await?;
-
         if assets_objects.is_empty() {
             tx.send(DownloadEvent::Finished).await?;
             return Ok(());
         }
+
+        let _ = tx.send(DownloadEvent::Started { total_files: assets_objects.len() }).await;
 
         let objects_dir = assets_dir.as_ref().join("objects");
 
@@ -375,12 +332,10 @@ impl PistonClient {
                 let tx = tx.clone();
 
                 async move {
-                    let _permit = limiter
-                        .acquire()
-                        .await?;
+                    let _permit = limiter.acquire().await?;
 
-                    let file_name = obj_data.hash.clone();
-                    let prefix = &obj_data.hash[0..2];
+                    let file_name = obj_data.hash();
+                    let prefix = obj_data.hash().get(0..2).unwrap_or("xx");
                     let target_sub_dir = objects_dir.join(prefix);
 
                     obj_data
@@ -391,7 +346,7 @@ impl PistonClient {
                 }
             });
 
-        let mut buffered_stream = download_stream.buffer_unordered(max_parallel);
+        let mut buffered_stream = download_stream.buffer_unordered(32);
 
         while let Some(result) = buffered_stream.next().await {
             result?;

@@ -1,12 +1,11 @@
 use std::fs;
-use axolotl_sdk::FetchResult::Fetched;
 use directories::ProjectDirs;
 use std::path::Path;
 use std::process::Stdio;
 use tokio::sync::mpsc;
-use axolotl_sdk::core::client::{AuthSession, MCLClient};
-use axolotl_sdk::core::errors::SdkError;
-use axolotl_sdk::core::progress::DownloadEvent;
+use axolotl_sdk::{DownloadEvent, MCLClient, SdkError};
+use axolotl_sdk::core::verifier::AuthSession;
+use axolotl_sdk::FetchResult::Fetched;
 
 pub fn check_file<P>(file_path: P) -> Result<(), SdkError>
 where
@@ -45,6 +44,8 @@ async fn main() {
     // let version = &ok_manifest.find_version("1.16.5").unwrap();
     let version = &ok_manifest.find_version(&latest.release).unwrap();
     let version_details = client.piston.fetch_version_details(version).await.unwrap();
+
+    let assets_objects = client.piston.fetch_asset_index(&version_details).await.unwrap();
 
     let base_dir = proj_dirs.data_dir().to_path_buf();
 
@@ -116,7 +117,7 @@ async fn main() {
     println!("⏳ Скачивание объектов ассетов...");
     client
         .piston
-        .download_asset_objects(&version_details, assets_dir.clone(), tx.clone())
+        .download_asset_objects(assets_objects, assets_dir.clone(), tx.clone())
         .await
         .expect("Ошибка при скачивании объектов ассетов");
 

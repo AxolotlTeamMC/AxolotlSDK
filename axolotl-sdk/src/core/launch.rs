@@ -5,10 +5,11 @@ use std::path::PathBuf;
 use tokio::process::Command;
 use crate::loaders::piston::models::version::Kind;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum UserType {
-    Mojang,
+    #[default]
     Msa,
+    Mojang,
     Legacy,
     Offline,
 }
@@ -16,8 +17,8 @@ pub enum UserType {
 impl UserType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            UserType::Mojang => "mojang",
             UserType::Msa => "msa",
+            UserType::Mojang => "mojang",
             UserType::Legacy => "legacy",
             UserType::Offline => "offline",
         }

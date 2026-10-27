@@ -1,24 +1,23 @@
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Latest {
     pub release: String,
     pub snapshot: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PistonVersion {
     id: String,
     #[serde(rename = "type")]
     kind: Kind,
     url: Url,
     time: DateTime<Utc>,
-    #[serde(rename = "releaseTime")]
     release_time: DateTime<Utc>,
     sha1: String,
-    #[serde(rename = "complianceLevel")]
     compliance_level: u32,
 }
 
@@ -46,12 +45,15 @@ impl PistonVersion {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
+    #[serde(rename = "release")]
     Release,
+    #[serde(rename = "snapshot")]
     Snapshot,
+    #[serde(rename = "oldBeta")]
     OldBeta,
+    #[serde(rename = "oldAlpha")]
     OldAlpha,
 }
 
@@ -59,15 +61,9 @@ impl Kind {
     pub fn as_str(&self) -> &'static str {
         match self {
             Kind::Release => "release",
-            Kind::Snapshot => {
-                "snapshot"
-            }
-            Kind::OldBeta => {
-                "oldBeta"
-            }
-            Kind::OldAlpha => {
-                "oldAlpha"
-            }
+            Kind::Snapshot => "snapshot",
+            Kind::OldBeta => "oldBeta",
+            Kind::OldAlpha => "oldAlpha",
         }
     }
 }

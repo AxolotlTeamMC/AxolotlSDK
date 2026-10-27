@@ -53,4 +53,7 @@ pub enum SdkError {
 
     #[error("Error configure builder: {0}")]
     BuilderError(String),
+
+    #[error("Error extract: {0}")]
+    ExtractionError(String),
 }

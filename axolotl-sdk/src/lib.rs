@@ -1,36 +1,11 @@
-use serde::Deserialize;
-
 pub mod core;
 pub mod loaders;
 pub mod models;
 
-#[derive(Deserialize)]
-pub enum FetchResult<T> {
-    Fetched { data: T, etag: Option<String> },
-    NotModified,
-}
+pub use core::client::{MCLClient, MCLClientBuilder, NoAuthMode, AuthMode};
+pub use core::errors::SdkError;
+pub use core::http::FetchResult;
+pub use core::progress::DownloadEvent;
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
-
-pub fn get_mojang_os_name() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "macos") {
-        "osx"
-    } else {
-        "linux"
-    }
-}
+pub use url::Url;
+pub use chrono::{DateTime, Utc};

@@ -4,3 +4,4 @@ pub mod errors;
 pub mod download;
 pub mod launch;
 pub mod client;
+pub mod http;

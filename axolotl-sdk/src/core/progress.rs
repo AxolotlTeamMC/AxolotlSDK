@@ -14,17 +14,17 @@ pub enum DownloadEvent {
     Finished,
 }
 
-#[derive(Clone, Debug)]
-pub enum ProgressMessage {
-    /// Старт скачивания: (всего_файлов)
-    Started(usize),
-    /// Прогресс конкретного файла: (имя_файла, скачано_байт_в_этом_чанке)
-    FileChunk {
-        file_name: String,
-        bytes_written: usize,
-    },
-    /// Файл успешно скачан и проверен: (имя_файла)
-    FileFinished(String),
-    /// Общая ошибка
-    Error(String),
-}
+// #[derive(Clone, Debug)]
+// pub enum ProgressMessage {
+//     /// Старт скачивания: (всего_файлов)
+//     Started(usize),
+//     /// Прогресс конкретного файла: (имя_файла, скачано_байт_в_этом_чанке)
+//     FileChunk {
+//         file_name: String,
+//         bytes_written: usize,
+//     },
+//     /// Файл успешно скачан и проверен: (имя_файла)
+//     FileFinished(String),
+//     /// Общая ошибка
+//     Error(String),
+// }
